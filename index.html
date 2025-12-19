@@ -182,6 +182,14 @@
                     <option value="bell">Bell</option>
                 </select>
             </div>
+            
+            <div style="margin-top: 15px; padding: 10px; background: #e8f4f8; border-radius: 5px;">
+                <label style="display: flex; align-items: center; cursor: pointer; justify-content: center;">
+                    <input type="checkbox" id="melodyToggle" onchange="toggleMelodyMode()" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                    <strong>🎵 Melody Mode (Twinkle Twinkle)</strong>
+                </label>
+                <p style="font-size: 11px; color: #555; margin: 5px 0 0 0;">When enabled, playing a key triggers the melody starting from that note</p>
+            </div>
         </div>
 
         <div class="keyboard" id="keyboard"></div>
@@ -190,20 +198,20 @@
             <h3 style="margin: 0 0 10px 0; color: #856404;">⚠️ Problematic Intervals</h3>
             <p style="font-size: 13px; color: #856404; margin-bottom: 10px;">These demonstrate the weaknesses in each tuning system</p>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                <button onclick="playInterval(8, 3)" style="background: #ff6b6b; font-size: 13px; padding: 10px 15px;">
-                    Wolf 5th<br><small>(G# → Eb) Meantone</small>
+                <button onclick="playInterval(8, 15)" style="background: #ff6b6b; font-size: 13px; padding: 10px 15px;">
+                    Wolf 5th<br><small>(G# → Eb) Meantone ~738¢</small>
                 </button>
-                <button onclick="playInterval(1, 5)" style="background: #ffa500; font-size: 13px; padding: 10px 15px;">
+                <button onclick="playInterval(3, 8)" style="background: #ff4444; font-size: 13px; padding: 10px 15px;">
+                    Wolf dim6<br><small>(Eb → G#) Meantone ~462¢</small>
+                </button>
+                <button onclick="playInterval(1, 8)" style="background: #ffa500; font-size: 13px; padding: 10px 15px;">
                     Wolf 5th<br><small>(C# → G#) Pythagorean</small>
                 </button>
                 <button onclick="playInterval(0, 4)" style="background: #ffb347; font-size: 13px; padding: 10px 15px;">
-                    Major 3rd<br><small>(C → E) 12-TET</small>
+                    Major 3rd<br><small>(C → E) 12-TET vs Pure</small>
                 </button>
-                <button onclick="playInterval(0, 8)" style="background: #ff8c94; font-size: 13px; padding: 10px 15px;">
-                    Tritone<br><small>(C → G#) All Systems</small>
-                </button>
-                <button onclick="playInterval(2, 9)" style="background: #ffa07a; font-size: 13px; padding: 10px 15px;">
-                    Pythagorean 3rd<br><small>(D → A) Very Sharp</small>
+                <button onclick="playInterval(2, 6)" style="background: #ffa07a; font-size: 13px; padding: 10px 15px;">
+                    Pythagorean 3rd<br><small>(D → F#) Very Sharp ~408¢</small>
                 </button>
             </div>
         </div>
@@ -268,7 +276,35 @@
             },
             'quarter-comma': {
                 name: 'Quarter-Comma Meantone',
-                ratios: [1, 1.070, 1.118, 1.196, 1.250, 1.337, 1.397, 1.495, 1.600, 1.671, 1.788, 1.869]
+                // Chain of fifths with wolf between G# and Eb
+                // Eb-Bb-F-C-G-D-A-E-B-F#-C#-G#-[WOLF]-Eb
+                ratios: (() => {
+                    const fifth = Math.pow(5, 0.25); // Tempered fifth ≈ 1.49535 (~696.6 cents)
+                    
+                    // Build chain starting from C going up and down by tempered fifths
+                    const normalize = (val) => {
+                        while (val >= 2) val /= 2;
+                        while (val < 1) val *= 2;
+                        return val;
+                    };
+                    
+                    // Build from C (all notes relative to C = 1.0)
+                    const c  = 1;
+                    const g  = normalize(fifth);        // up 1 fifth
+                    const d  = normalize(fifth**2);     // up 2 fifths
+                    const a  = normalize(fifth**3);     // up 3 fifths
+                    const e  = normalize(fifth**4);     // up 4 fifths
+                    const b  = normalize(fifth**5);     // up 5 fifths
+                    const fs = normalize(fifth**6);     // up 6 fifths (F#)
+                    const cs = normalize(fifth**7);     // up 7 fifths (C#)
+                    const gs = normalize(fifth**8);     // up 8 fifths (G#) - wolf starts here
+                    const f  = normalize(1/fifth);      // down 1 fifth (F)
+                    const bb = normalize(1/fifth**2);   // down 2 fifths (Bb)
+                    const eb = normalize(1/fifth**3);   // down 3 fifths (Eb)
+                    
+                    // Return in chromatic order: C, C#, D, Eb, E, F, F#, G, G#, A, Bb, B
+                    return [c, cs, d, eb, e, f, fs, g, gs, a, bb, b];
+                })()
             }
         };
 
@@ -278,6 +314,37 @@
         let analyser;
         let animationId;
         let currentFrequencies = new Map();
+        let melodyMode = false;
+        let currentMelody = null;
+
+        // Twinkle Twinkle Little Star melody (scale degrees, 0-11)
+        const twinkleMelody = [
+            { note: 0, duration: 0.35 },  // C C
+            { note: 0, duration: 0.35 },
+            { note: 7, duration: 0.35 },  // G G
+            { note: 7, duration: 0.35 },
+            { note: 9, duration: 0.35 },  // A A
+            { note: 9, duration: 0.35 },
+            { note: 7, duration: 0.7 },   // G
+            { note: 5, duration: 0.35 },  // F F
+            { note: 5, duration: 0.35 },
+            { note: 4, duration: 0.35 },  // E E
+            { note: 4, duration: 0.35 },
+            { note: 2, duration: 0.35 },  // D D
+            { note: 2, duration: 0.35 },
+            { note: 0, duration: 0.7 }    // C
+        ];
+
+        const twinkleBass = [
+            { note: 0, duration: 0.7 },   // C (root)
+            { note: 7, duration: 0.7 },   // G
+            { note: 9, duration: 0.7 },   // A
+            { note: 7, duration: 0.7 },   // G
+            { note: 5, duration: 0.7 },   // F
+            { note: 4, duration: 0.7 },   // E
+            { note: 2, duration: 0.7 },   // D
+            { note: 0, duration: 0.7 }    // C
+        ];
 
         const instruments = {
             sine: { wave: 'sine', attack: 0.01, decay: 0.1, sustain: 0.3, release: 0.1 },
@@ -285,7 +352,7 @@
             square: { wave: 'square', attack: 0.01, decay: 0.1, sustain: 0.25, release: 0.1 },
             sawtooth: { wave: 'sawtooth', attack: 0.01, decay: 0.15, sustain: 0.3, release: 0.15 },
             organ: { wave: 'custom', attack: 0.05, decay: 0.0, sustain: 0.3, release: 0.2 },
-            pluck: { wave: 'triangle', attack: 0.001, decay: 0.3, sustain: 0.0, release: 0.5 },
+            pluck: { wave: 'triangle', attack: 0.01, decay: 0.3, sustain: 0.0, release: 0.5 },
             bell: { wave: 'custom-bell', attack: 0.001, decay: 0.8, sustain: 0.0, release: 1.2 }
         };
 
@@ -303,15 +370,80 @@
             }
         }
 
+        // Common simple ratios for interval identification
+        const simpleRatios = [
+            { ratio: 1/1, name: 'Unison', cents: 0 },
+            { ratio: 16/15, name: 'Minor 2nd', cents: 100 },
+            { ratio: 9/8, name: 'Major 2nd', cents: 200 },
+            { ratio: 6/5, name: 'Minor 3rd', cents: 300 },
+            { ratio: 5/4, name: 'Major 3rd', cents: 400 },
+            { ratio: 4/3, name: 'Perfect 4th', cents: 500 },
+            { ratio: 7/5, name: 'Tritone', cents: 600 },
+            { ratio: 3/2, name: 'Perfect 5th', cents: 700 },
+            { ratio: 8/5, name: 'Minor 6th', cents: 800 },
+            { ratio: 5/3, name: 'Major 6th', cents: 900 },
+            { ratio: 9/5, name: 'Minor 7th', cents: 1000 },
+            { ratio: 15/8, name: 'Major 7th', cents: 1100 },
+            { ratio: 2/1, name: 'Octave', cents: 1200 }
+        ];
+
+        function analyzeInterval(freq1, freq2) {
+            const ratio = Math.max(freq1, freq2) / Math.min(freq1, freq2);
+            const actualCents = 1200 * Math.log2(ratio);
+            
+            // Find closest simple ratio
+            let closest = simpleRatios[0];
+            let minDiff = Math.abs(1200 * Math.log2(ratio / closest.ratio));
+            
+            simpleRatios.forEach(sr => {
+                const diff = Math.abs(1200 * Math.log2(ratio / sr.ratio));
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = sr;
+                }
+            });
+            
+            // Calculate cents from equal temperament
+            const etCents = closest.cents;
+            const deviation = actualCents - etCents;
+            
+            return {
+                ratio: ratio.toFixed(4),
+                simplest: closest.name,
+                simpleRatio: closest.ratio,
+                actualCents: actualCents.toFixed(1),
+                etDeviation: deviation.toFixed(1)
+            };
+        }
+
         function updateFrequencyDisplay() {
             const freqDisplay = document.getElementById('freqDisplay');
             if (currentFrequencies.size === 0) {
                 freqDisplay.innerHTML = '<em style="color: #999;">No notes playing</em>';
             } else {
                 let html = '';
-                currentFrequencies.forEach((freq, noteIndex) => {
-                    html += `<span class="freq-item">${notes[noteIndex]}: ${freq.toFixed(2)} Hz</span>`;
+                const freqs = Array.from(currentFrequencies.entries());
+                
+                // Show individual frequencies
+                freqs.forEach(([noteIndex, freq]) => {
+                    html += `<span class="freq-item">${notes[noteIndex % 12]}: ${freq.toFixed(2)} Hz</span>`;
                 });
+                
+                // If exactly 2 notes, show interval analysis
+                if (freqs.length === 2) {
+                    const analysis = analyzeInterval(freqs[0][1], freqs[1][1]);
+                    const deviationSign = parseFloat(analysis.etDeviation) >= 0 ? '+' : '';
+                    const deviationColor = Math.abs(parseFloat(analysis.etDeviation)) < 5 ? '#4CAF50' : 
+                                          Math.abs(parseFloat(analysis.etDeviation)) < 15 ? '#FF9800' : '#F44336';
+                    
+                    html += `<br><span class="freq-item" style="background: #9c27b0; font-size: 14px; margin-top: 5px;">
+                        Interval: ${analysis.simplest} (~${analysis.ratio}:1)
+                    </span>`;
+                    html += `<span class="freq-item" style="background: ${deviationColor}; font-size: 13px;">
+                        ${deviationSign}${analysis.etDeviation}¢ from 12-TET
+                    </span>`;
+                }
+                
                 freqDisplay.innerHTML = html;
             }
         }
@@ -386,6 +518,186 @@
             currentInstrument = document.getElementById('instrument').value;
         }
 
+        function toggleMelodyMode() {
+            melodyMode = document.getElementById('melodyToggle').checked;
+            if (!melodyMode && currentMelody) {
+                stopMelody();
+            }
+        }
+
+        function stopMelody() {
+            if (currentMelody) {
+                // Clear all scheduled timeouts
+                currentMelody.timeouts.forEach(t => clearTimeout(t));
+                
+                // Stop all active oscillators immediately
+                const now = audioContext ? audioContext.currentTime : 0;
+                currentMelody.oscillators.forEach(({ oscillators, gains }) => {
+                    gains.forEach(gain => {
+                        try {
+                            gain.gain.cancelScheduledValues(now);
+                            gain.gain.setValueAtTime(gain.gain.value, now);
+                            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                        } catch (e) {
+                            // Ignore errors for already-stopped nodes
+                        }
+                    });
+                    oscillators.forEach(osc => {
+                        try {
+                            osc.stop(now + 0.05);
+                        } catch (e) {
+                            // Ignore errors for already-stopped oscillators
+                        }
+                    });
+                });
+                
+                // Clear visual feedback and frequency display
+                currentMelody.notes.forEach(noteIdx => {
+                    const keyElement = document.querySelector(`[data-note="${noteIdx}"]`);
+                    if (keyElement) keyElement.classList.remove('active');
+                    currentFrequencies.delete(noteIdx);
+                });
+                updateFrequencyDisplay();
+                
+                currentMelody = null;
+            }
+        }
+
+        function playMelodySequence(startNoteIndex) {
+            initAudioContext();
+            
+            stopMelody(); // Stop any existing melody
+            
+            const timeouts = [];
+            const notesPlayed = new Set();
+            const oscillatorRefs = []; // Track all oscillators for cleanup
+            let melodyTime = 0;
+            let bassTime = 0;
+            
+            // Play melody line
+            twinkleMelody.forEach((step, i) => {
+                const timeout = setTimeout(() => {
+                    if (!currentMelody) return; // Melody was stopped
+                    
+                    const transposedNote = startNoteIndex + step.note;
+                    const noteInRange = ((transposedNote % 12) + 12) % 12; // For visual feedback only
+                    notesPlayed.add(noteInRange);
+                    
+                    const freq = getFrequency(transposedNote);
+                    const { oscillators, gains, inst } = createInstrumentOscillator(freq);
+                    const now = audioContext.currentTime;
+                    
+                    oscillatorRefs.push({ oscillators, gains });
+                    
+                    oscillators.forEach(osc => {
+                        gains.forEach(gain => gain.connect(analyser));
+                        osc.start();
+                    });
+                    
+                    // Update visual feedback (only for keys in range)
+                    const keyElement = document.querySelector(`[data-note="${noteInRange}"]`);
+                    if (keyElement) keyElement.classList.add('active');
+                    
+                    // Update frequency display
+                    currentFrequencies.set(noteInRange, freq);
+                    updateFrequencyDisplay();
+                    
+                    // Stop melody note after duration with release envelope
+                    const stopTimeout = setTimeout(() => {
+                        if (!currentMelody) return; // Melody was stopped
+                        
+                        const stopTime = audioContext.currentTime;
+                        const releaseTime = inst.release || 0.1;
+                        gains.forEach(gain => {
+                            try {
+                                gain.gain.cancelScheduledValues(stopTime);
+                                gain.gain.setValueAtTime(gain.gain.value, stopTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, stopTime + releaseTime);
+                            } catch (e) {
+                                // Ignore if already stopped
+                            }
+                        });
+                        oscillators.forEach(osc => {
+                            try {
+                                osc.stop(stopTime + releaseTime);
+                            } catch (e) {
+                                // Ignore if already stopped
+                            }
+                        });
+                        
+                        // Remove visual feedback
+                        if (keyElement) keyElement.classList.remove('active');
+                        currentFrequencies.delete(noteInRange);
+                        updateFrequencyDisplay();
+                    }, step.duration * 1000);
+                    
+                    timeouts.push(stopTimeout);
+                }, melodyTime * 1000);
+                
+                timeouts.push(timeout);
+                melodyTime += step.duration;
+            });
+            
+            // Play bass line (one octave down in frequency)
+            twinkleBass.forEach((step, i) => {
+                const timeout = setTimeout(() => {
+                    if (!currentMelody) return; // Melody was stopped
+                    
+                    const transposedNote = startNoteIndex + step.note;
+                    const freq = getFrequency(transposedNote) / 2; // One octave down
+                    
+                    const { oscillators, gains, inst } = createInstrumentOscillator(freq);
+                    const now = audioContext.currentTime;
+                    
+                    oscillatorRefs.push({ oscillators, gains });
+                    
+                    oscillators.forEach(osc => {
+                        gains.forEach(gain => {
+                            gain.gain.setValueAtTime(gain.gain.value * 0.5, now); // Quieter bass
+                            gain.connect(analyser);
+                        });
+                        osc.start();
+                    });
+                    
+                    // Stop bass note after duration
+                    const stopTimeout = setTimeout(() => {
+                        if (!currentMelody) return; // Melody was stopped
+                        
+                        const stopTime = audioContext.currentTime;
+                        const releaseTime = inst.release || 0.1;
+                        gains.forEach(gain => {
+                            try {
+                                gain.gain.cancelScheduledValues(stopTime);
+                                gain.gain.setValueAtTime(gain.gain.value, stopTime);
+                                gain.gain.exponentialRampToValueAtTime(0.01, stopTime + releaseTime);
+                            } catch (e) {
+                                // Ignore if already stopped
+                            }
+                        });
+                        oscillators.forEach(osc => {
+                            try {
+                                osc.stop(stopTime + releaseTime);
+                            } catch (e) {
+                                // Ignore if already stopped
+                            }
+                        });
+                    }, step.duration * 1000);
+                    
+                    timeouts.push(stopTimeout);
+                }, bassTime * 1000);
+                
+                timeouts.push(timeout);
+                bassTime += step.duration;
+            });
+            
+            currentMelody = { 
+                timeouts, 
+                notes: notesPlayed, 
+                startNote: startNoteIndex,
+                oscillators: oscillatorRefs
+            };
+        }
+
         function getCurrentTuning() {
             return tunings[document.getElementById('tuning').value];
         }
@@ -393,7 +705,12 @@
         function getFrequency(noteIndex) {
             const tuning = getCurrentTuning();
             const baseC = 261.63; // C4
-            return baseC * tuning.ratios[noteIndex];
+            
+            // Handle notes beyond the 12-key range by extending into higher/lower octaves
+            const octaves = Math.floor(noteIndex / 12);
+            const noteInOctave = ((noteIndex % 12) + 12) % 12; // Handle negative indices
+            
+            return baseC * tuning.ratios[noteInOctave] * Math.pow(2, octaves);
         }
 
         function createInstrumentOscillator(freq) {
@@ -458,6 +775,14 @@
 
         function playNote(noteIndex) {
             initAudioContext();
+            
+            // If melody mode is enabled, only play the melody, never the single note
+            if (melodyMode) {
+                if (!currentMelody) {
+                    playMelodySequence(noteIndex);
+                }
+                return;
+            }
             
             const freq = getFrequency(noteIndex);
             const { oscillators, gains, inst } = createInstrumentOscillator(freq);
@@ -568,8 +893,20 @@
                 key.innerHTML = `${notes[i]}<span class="key-label">${keys[i]}</span>`;
                 
                 key.addEventListener('mousedown', () => playNote(i));
-                key.addEventListener('mouseup', () => stopNote(i));
-                key.addEventListener('mouseleave', () => stopNote(i));
+                key.addEventListener('mouseup', () => {
+                    if (melodyMode) {
+                        stopMelody();
+                    } else {
+                        stopNote(i);
+                    }
+                });
+                key.addEventListener('mouseleave', () => {
+                    if (melodyMode) {
+                        stopMelody();
+                    } else {
+                        stopNote(i);
+                    }
+                });
                 
                 keyboard.appendChild(key);
             }
@@ -590,7 +927,11 @@
             const keyIndex = keys.indexOf(e.key.toUpperCase());
             if (keyIndex !== -1) {
                 keyPressed.delete(keyIndex);
-                stopNote(keyIndex);
+                if (melodyMode) {
+                    stopMelody();
+                } else {
+                    stopNote(keyIndex);
+                }
             }
         });
 
