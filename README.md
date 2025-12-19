@@ -2,6 +2,8 @@
 
 An interactive web-based tool for exploring and comparing historical tuning systems through sound. Experience how different temperaments affect musical intervals, melodies, and harmony.
 
+**[🎵 Try It Live](https://ajosephsen.github.io/TuningExplorer/)** - No installation required, works in any modern browser!
+
 ## Features
 
 ### 🎵 Multiple Tuning Systems
