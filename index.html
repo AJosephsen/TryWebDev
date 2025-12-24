@@ -572,6 +572,10 @@
             
             stopMelody(); // Stop any existing melody
             
+            // Stop all active single notes to prevent pedal tones
+            const activeNotes = Array.from(activeOscillators.keys());
+            activeNotes.forEach(noteIndex => stopNote(noteIndex));
+            
             const timeouts = [];
             const notesPlayed = new Set();
             const oscillatorRefs = []; // Track all oscillators for cleanup
